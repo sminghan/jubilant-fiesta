@@ -1,6 +1,6 @@
 ## Go To Demo
 
-[Map](https://github.com/sminghan/jubilant-fiesta/mapper.html)
+[Map](https://sminghan.github.io/jubilant-fiesta/mapper.html)
 
 ---
 
