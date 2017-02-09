@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Drag-and-Drop</title>
+    <!--
+    <script type="text/javascript" src="./openlayers/v3.20.1/ol-debug.js"></script>
+    <link rel="stylesheet" href="./openlayers/v3.20.1/ol.css" type="text/css"/>
+    -->
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/ol3/3.20.1/ol.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/ol3/3.20.1/ol.css"></script>
+    
+    <script type="text/javascript" src="./lib/zip.js"></script>
+    <script type="text/javascript" src="./lib/inflate.js"></script>
+    <script type="text/javascript" src="./lib/deflate.js"></script>
+    <script type="text/javascript" src="./lib/lodash.min.js"></script>
+    <script type="text/javascript" src="./lib/jquery-3.1.1.js"></script>
+    <style>
+    #map{
+        height:100%;
+        width:100%;
+    }
+    .dragging{
+        background:blue;
+    }
+    </style>
+  </head>
+  <body>
+  <div id="dropZone" style="position:absolute; background:rgba(100,100,100,0.5); z-index:100; top:0; left:0; width:100px; height:100px;">
+  <!--
+    <input class="box" type="file" name="files[]" id="file" data-multiple-caption="{count} files selected" multiple/>
+    <label for="file">DND</label>    
+    -->
+  </div>
+    <div id="map" class="map"></div>
+    <div id="info">&nbsp;</div>
+    <script>
+      var defaultStyle = {
+        'Point': new ol.style.Style({
+          image: new ol.style.Circle({
+            fill: new ol.style.Fill({
+              color: 'rgba(255,255,0,0.5)'
+            }),
+            radius: 5,
+            stroke: new ol.style.Stroke({
+              color: '#ff0',
+              width: 1
+            })
+          })
+        }),
+        'LineString': new ol.style.Style({
+          stroke: new ol.style.Stroke({
+            color: '#f00',
+            width: 3
+          })
+        }),
+        'Polygon': new ol.style.Style({
+          fill: new ol.style.Fill({
+            color: 'rgba(0,255,255,0.5)'
+          }),
+          stroke: new ol.style.Stroke({
+            color: '#0ff',
+            width: 1
+          })
+        }),
+        'MultiPoint': new ol.style.Style({
+          image: new ol.style.Circle({
+            fill: new ol.style.Fill({
+              color: 'rgba(255,0,255,0.5)'
+            }),
+            radius: 5,
+            stroke: new ol.style.Stroke({
+              color: '#f0f',
+              width: 1
+            })
+          })
+        }),
+        'MultiLineString': new ol.style.Style({
+          stroke: new ol.style.Stroke({
+            color: '#0f0',
+            width: 3
+          })
+        }),
+        'MultiPolygon': new ol.style.Style({
+          fill: new ol.style.Fill({
+            color: 'rgba(0,0,255,0.5)'
+          }),
+          stroke: new ol.style.Stroke({
+            color: '#00f',
+            width: 1
+          })
+        })
+      };
+
+      var styleFunction = function(feature, resolution) {
+        var featureStyleFunction = feature.getStyleFunction();
+        if (featureStyleFunction) {
+          return featureStyleFunction.call(feature, resolution);
+        } else {
+          return defaultStyle[feature.getGeometry().getType()];
+        }
+      };
+
+      var dragAndDropInteraction = new ol.interaction.DragAndDrop({
+        formatConstructors: [
+          ol.format.GPX,
+          ol.format.GeoJSON,
+          ol.format.IGC,
+          ol.format.KML,
+          ol.format.TopoJSON
+        ]
+      });
+
+        var map = new ol.Map({
+        interactions: ol.interaction.defaults().extend([dragAndDropInteraction]),
+        layers: [
+          new ol.layer.Tile({
+            source: new ol.source.OSM()
+          })
+        ],
+        target: 'map',
+        view: new ol.View({
+          center: [0, 0],
+          zoom: 2
+        })
+        });
+      
+        var vector = new ol.layer.Vector({
+        source: new ol.source.Vector({
+          format: new ol.format.KML({
+            extractStyles: true
+          })
+        })
+        });
+        map.addLayer(vector);
+
+      dragAndDropInteraction.on('addfeatures', function(event) {
+        var vectorSource = new ol.source.Vector({
+          features: event.features
+        });
+        map.addLayer(new ol.layer.Vector({
+          source: vectorSource,
+          style: styleFunction
+        }));
+        map.getView().fit(
+            vectorSource.getExtent(), /** @type {ol.Size} */ (map.getSize()));
+      });
+
+      var displayFeatureInfo = function(pixel) {
+        var features = [];
+        map.forEachFeatureAtPixel(pixel, function(feature) {
+          features.push(feature);
+        });
+        if (features.length > 0) {
+          var info = [];
+          var i, ii;
+          for (i = 0, ii = features.length; i < ii; ++i) {
+            info.push(features[i].get('name'));
+          }
+          document.getElementById('info').innerHTML = info.join(', ') || '&nbsp';
+        } else {
+          document.getElementById('info').innerHTML = '&nbsp;';
+        }
+      };
+
+      map.on('pointermove', function(evt) {
+        if (evt.dragging) {
+          return;
+        }
+        var pixel = map.getEventPixel(evt.originalEvent);
+        displayFeatureInfo(pixel);
+      });
+
+      map.on('click', function(evt) {
+        displayFeatureInfo(evt.pixel);
+      });
+      $("#dropZone").on("dragover", function(event){
+            event.preventDefault(); event.originalEvent.dataTransfer.dropEffect = 'copy'; 
+        $(this).addClass("dragging");
+      });
+      $("#dropZone").on("dragleave", function(event){
+            event.preventDefault();  
+        $(this).removeClass("dragging");
+      });
+      $("#dropZone").on("dragenter", function(event){
+            event.preventDefault();  
+      });
+      $("#dropZone").on("drop", function(event) {
+              
+            event.preventDefault();  
+            event.stopPropagation();
+            var files = event.originalEvent.dataTransfer.files;
+            var i, ii, file;
+            for (i = 0, ii = files.length; i < ii; ++i) {
+            file = files.item(i);
+            var filename = file.name;
+            if (_.endsWith(filename,'kmz')){
+                var uz = unzipFromBlob(cb);
+                uz(file);
+                /*var reader = new FileReader();
+                reader.addEventListener(ol.events.EventType.LOAD,
+                    unzipFromBlob(cb));
+                reader.readAsArrayBuffer(file);    */
+            } else {
+                console.log("not kmz");
+            }
+
+            }
+        });
+        function cb(text){
+          addFeatures(text);
+        }
+        function addFeatures(text) {
+            var formatter = new ol.format.KML();
+            var kml_features = formatter.readFeatures(text, {
+              dataProjection: 'EPSG:4326',
+              featureProjection: 'EPSG:3857'
+            });
+            vector.getSource().addFeatures(kml_features);
+        }
+        
+        function unzipFromBlob(callback) {
+            return function unzip(blob) {
+              // use a BlobReader to read the zip from a Blob object
+              zip.createReader(new zip.BlobReader(blob), function(reader) {
+                // get all entries from the zip
+                console.log('unzipped');
+                reader.getEntries(function(entries) {
+                console.log('unzipped entries', entries);
+                  if (entries.length) {
+                    // get first entry content as text
+                    entries[0].getData(new zip.TextWriter(), function(text) {
+                      // text contains the entry data as a String
+                      console.log(text);
+                      callback(text);
+                      // close the zip reader
+                      reader.close(function() {
+                        // onclose callback
+                      });
+
+                    }, function(current, total) {
+                      // onprogress callback
+                    });
+                  }
+                });
+              }, function(error) {
+                // onerror callback
+              });
+            };
+        }
+    </script>
+    <script>
+    //you need this to look in the main KMZ/KML, find the NetworkLink file urls and //download those additional KML files
+        var readAndAddFeatures = function(text) {
+            var listFilesKMZ = parseKmlText(text);
+            console.log(listFilesKMZ);
+            listFilesKMZ.forEach(function(el) {
+              // console.log(el);
+              // Nested calls. Acceptable for a demo
+              // but could be "promisified" instead
+              ajaxKMZ(el, unzipFromBlob(addFeatures));
+            });
+        };
+        function parseKmlText(text) {
+            var oParser = new DOMParser();
+            var oDOM = oParser.parseFromString(text, 'text/xml');
+            var links = oDOM.querySelectorAll('NetworkLink Link href');
+            var files = Array.prototype.slice.call(links).map(function(el) {
+            return el.textContent;
+            });
+            // console.log(files);
+            return files;
+        }
+    </script>
+  </body>
+</html>
